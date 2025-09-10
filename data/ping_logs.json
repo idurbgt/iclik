@@ -1,0 +1,23 @@
+[
+    {
+        "id": 1,
+        "server_id": 1,
+        "status": "up",
+        "response_time": 4,
+        "checked_at": "2025-09-10 11:18:11"
+    },
+    {
+        "id": 2,
+        "server_id": 2,
+        "status": "up",
+        "response_time": 3,
+        "checked_at": "2025-09-10 11:18:35"
+    },
+    {
+        "id": 3,
+        "server_id": 3,
+        "status": "down",
+        "response_time": null,
+        "checked_at": "2025-09-10 11:21:31"
+    }
+]
