@@ -1,63 +1,63 @@
 <?php
 /**
- * Cron script to check all servers status
- * Run this script every minute via cron:
- * * * * * * /usr/bin/php /path/to/uptime-php/cron/ping_check.php
+ * Cron script untuk mengecek status semua server aktif.
+ * Jalankan setiap menit via cron:
+ * * * * * * /usr/bin/php /path/to/iclik/cron/ping_check.php
  */
 
-require_once dirname(__FILE__) . '/../includes/json_handler.php';
+require_once dirname(__FILE__) . '/../includes/db.php';
 require_once dirname(__FILE__) . '/../includes/functions.php';
+require_once dirname(__FILE__) . '/../includes/monitor.php';
 
-// Set timezone
-date_default_timezone_set('Asia/Jakarta');
+loadConfig(); // set timezone dari config
 
 echo "[" . date('Y-m-d H:i:s') . "] Starting ping checks...\n";
 
 try {
-    $jsonHandler = new JsonHandler();
+    $pdo = getDB();
 
-    // Get all active servers
-    $servers = $jsonHandler->getServers();
+    // Ambil semua server aktif
+    $servers = $pdo->query("SELECT id, name, ip_address FROM servers WHERE is_active = 1")->fetchAll();
     $total_servers = count($servers);
     $checked = 0;
-    
+
     echo "Found $total_servers active servers to check\n";
 
     foreach ($servers as $server) {
         $server_id = $server['id'];
-        $name = $server['name'] ?: 'Server #' . $server_id;
+        $name = ($server['name'] !== '' && $server['name'] !== null) ? $server['name'] : ('Server #' . $server_id);
         $ip = $server['ip_address'];
-        
+
         echo "Checking $name ($ip)... ";
-        
-        // Ping server with retry logic
+
+        // Ping dengan retry
         $max_retries = 3;
         $ping_result = null;
-        
+
         for ($i = 0; $i < $max_retries; $i++) {
             $ping_result = pingServer($ip);
             if ($ping_result['status'] === 'up') {
                 break;
             }
             if ($i < $max_retries - 1) {
-                sleep(1); // Wait 1 second before retry
+                sleep(1);
             }
         }
-        
-        // Log result
-        $jsonHandler->addPingLog($server_id, $ping_result['status'], $ping_result['response_time']);
-        
-        // Update stats
-        $jsonHandler->updateServerStats($server_id, $ping_result['status'], $ping_result['response_time']);
-        
-        $status_text = $ping_result['status'] === 'up' ? 
-            "UP (" . $ping_result['response_time'] . "ms)" : 
-            "DOWN";
+
+        // Proses hasil: log + state machine + notifikasi Telegram (bila ada transisi)
+        $check = processCheckResult($pdo, $server, $ping_result['status'], $ping_result['response_time']);
+
+        $status_text = $ping_result['status'] === 'up'
+            ? "UP (" . $ping_result['response_time'] . "ms)"
+            : "DOWN";
+        if ($check['transition'] === 'down') {
+            $status_text .= " [ALERT: DOWN]";
+        } elseif ($check['transition'] === 'up') {
+            $status_text .= " [RECOVERED]";
+        }
         echo "$status_text\n";
-        
-        // Log to file
+
         logMessage("Server $name ($ip): $status_text");
-        
         $checked++;
     }
 
@@ -65,7 +65,7 @@ try {
     echo "----------------------------------------\n";
 
     logMessage("Completed ping check for $checked servers");
-    
+
 } catch (Exception $e) {
     echo "ERROR: " . $e->getMessage() . "\n";
     logMessage("ERROR: " . $e->getMessage());
@@ -73,4 +73,3 @@ try {
 }
 
 exit(0);
-?>

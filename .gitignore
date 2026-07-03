@@ -1,0 +1,14 @@
+# Rahasia — JANGAN commit (berisi password DB & token Telegram)
+config.php
+
+# Runtime data & log
+data/logs/
+data/*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/

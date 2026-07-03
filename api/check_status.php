@@ -2,46 +2,43 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-require_once '../includes/json_handler.php';
+require_once '../includes/db.php';
 require_once '../includes/functions.php';
+require_once '../includes/monitor.php';
 
 try {
-    $jsonHandler = new JsonHandler();
-    
-    $id = intval($_POST['id'] ?? 0);
+    loadConfig();
+    $pdo = getDB();
 
+    $id = intval($_POST['id'] ?? 0);
     if ($id <= 0) {
         echo json_encode(['success' => false, 'message' => 'Invalid server ID']);
         exit;
     }
 
-    // Get server info
-    $server = $jsonHandler->getServerById($id);
-    
-    if ($server) {
-        $server_id = $server['id'];
-        $ip = $server['ip_address'];
-        
-        // Perform ping check
-        $ping_result = pingServer($ip);
-        
-        // Log result
-        $jsonHandler->addPingLog($server_id, $ping_result['status'], $ping_result['response_time']);
-        
-        // Update stats
-        $jsonHandler->updateServerStats($server_id, $ping_result['status'], $ping_result['response_time']);
-        
-        echo json_encode([
-            'success' => true,
-            'status' => $ping_result['status'],
-            'response_time' => $ping_result['response_time'],
-            'checked_at' => date('H:i:s')
-        ]);
-    } else {
+    // Ambil server aktif
+    $stmt = $pdo->prepare("SELECT id, name, ip_address FROM servers WHERE id = ? AND is_active = 1");
+    $stmt->execute([$id]);
+    $server = $stmt->fetch();
+
+    if (!$server) {
         echo json_encode(['success' => false, 'message' => 'Server not found']);
+        exit;
     }
-    
+
+    // Ping + proses (log + state machine + notifikasi bila ada transisi)
+    $ping_result = pingServer($server['ip_address']);
+    $check = processCheckResult($pdo, $server, $ping_result['status'], $ping_result['response_time']);
+
+    echo json_encode([
+        'success'          => true,
+        'status'           => $ping_result['status'],
+        'confirmed_status' => $check['confirmed_status'],
+        'transition'       => $check['transition'],
+        'response_time'    => $ping_result['response_time'],
+        'checked_at'       => date('H:i:s'),
+    ]);
+
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
 }
-?>

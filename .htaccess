@@ -1,0 +1,12 @@
+# Proteksi file konfigurasi berisi kredensial (Apache 2.4+)
+<FilesMatch "^config\.php$">
+    Require all denied
+</FilesMatch>
+
+# Fallback untuk Apache 2.2
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^config\.php$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>

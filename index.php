@@ -22,26 +22,40 @@
 
         <div id="map"></div>
 
-        <div class="server-list">
-            <h2>Server Status</h2>
-            <table id="serverTable">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>IP Address</th>
-                        <th>Status</th>
-                        <th>Response Time</th>
-                        <th>Uptime</th>
-                        <th>Last Check</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="serverTableBody">
-                    <tr>
-                        <td colspan="7" class="text-center">No servers configured. Click "Add Server" to begin.</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="content-grid">
+            <div class="server-list">
+                <div class="section-head">
+                    <h2>Server Status</h2>
+                </div>
+                <table id="serverTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>IP Address</th>
+                            <th>Status</th>
+                            <th>Response Time</th>
+                            <th>Uptime</th>
+                            <th>Last Check</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="serverTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center">No servers configured. Click "Add Server" to begin.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Incident feed -->
+            <div class="incident-feed">
+                <div class="section-head">
+                    <h2>Incident Feed</h2>
+                </div>
+                <ul id="eventList" class="event-list">
+                    <li class="event-empty">Belum ada insiden tercatat.</li>
+                </ul>
+            </div>
         </div>
     </div>
 

@@ -1,21 +1,29 @@
 # Iclik
-Aplikasi web sederhana untuk monitoring server menggunakan ICMP/ping dengan visualisasi peta interaktif.
+Aplikasi web untuk monitoring server menggunakan ICMP/ping dengan visualisasi peta interaktif
+dan notifikasi Telegram saat server putus/terhubung kembali.
+
+Nama "Iclik" berasal dari alur utamanya: **klik lokasi di peta** untuk menempatkan server.
 
 ## Features
 
-- Real-time server monitoring dengan ICMP/ping
-- Interactive map visualization (Leaflet.js)
+- Server monitoring dengan ICMP/ping via cron
+- **Notifikasi Telegram** saat transisi status (down / recovered) — dengan durasi downtime
+- Anti-flapping: alert DOWN dikirim setelah ambang kegagalan berturut-turut (default 2×)
+- Interactive map visualization (Leaflet.js) dengan titik pusat di Jakarta
 - Click-to-select server location
-- Auto refresh setiap 30 detik
-- Uptime percentage statistics
-- Modern dan responsive UI
-- JSON file-based storage (no database required)
+- **Incident Feed** di dashboard (riwayat kejadian down/up dari database)
+- Auto refresh dashboard setiap 30 detik
+- Retry logic (3×) sebelum satu percobaan dinyatakan gagal
+- Uptime percentage & response time statistics
+- Penyimpanan MySQL
 
 ## Requirements
 
 - PHP >= 7.4
-- Web Server (Apache/Nginx)
-- PHP extensions: json
+- MySQL >= 5.7 (atau MariaDB setara)
+- Web Server (Apache/Nginx) atau `php -S` untuk development
+- PHP extensions: `pdo_mysql`, `curl` (opsional, untuk Telegram — ada fallback tanpa cURL)
+- Fungsi PHP `exec()` aktif (dibutuhkan untuk menjalankan `ping`)
 - Cron access untuk scheduled jobs
 
 ## Installation
@@ -23,122 +31,160 @@ Aplikasi web sederhana untuk monitoring server menggunakan ICMP/ping dengan visu
 ### 1. Setup Project
 ```bash
 cd /path/to/webserver
-# Download atau extract project files
+# Download atau extract project files ke folder iclik/
 ```
 
-### 2. Set Permissions
+### 2. Import Database
+```bash
+mysql -u root -p < sql/schema.sql
+```
+
+### 3. Konfigurasi
+Edit `config.php` (diproteksi dari akses browser oleh `.htaccess`):
+```php
+'database' => [
+    'host' => 'localhost',
+    'name' => 'iclik',
+    'user' => 'root',
+    'pass' => '',
+],
+```
+Untuk mengaktifkan notifikasi Telegram, lihat bagian **Telegram** di bawah.
+
+### 4. Set Permissions
 ```bash
 chmod 755 cron/ping_check.php
-chmod 755 data/
+chmod 755 data/            # untuk file log
 ```
 
-### 3. Setup Cron Job
+### 5. Setup Cron Job
 ```bash
-# Edit crontab
 crontab -e
-
-# Add line (run every minute):
-* * * * * /usr/bin/php /path/to/uptime-php/cron/ping_check.php
+# Jalankan setiap menit:
+* * * * * /usr/bin/php /path/to/iclik/cron/ping_check.php
 ```
 
-### 4. Access Application
+### 6. Access Application
 ```
-http://localhost/uptime-php/
+http://localhost/iclik/
 ```
+
+## Telegram
+
+1. Chat dengan **@BotFather** di Telegram → `/newbot` → salin **token**.
+2. Kirim satu pesan ke bot Anda, lalu buka
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` untuk mengambil **chat_id**
+   (untuk grup, tambahkan bot ke grup lalu kirim pesan; id grup biasanya negatif).
+3. Isi `config.php`:
+```php
+'telegram' => [
+    'enabled'   => true,
+    'bot_token' => '123456789:ABCdef...',
+    'chat_id'   => '123456789',
+    'timeout'   => 5,
+],
+'alert_threshold' => 2,   // jumlah gagal berturut sebelum alert DOWN
+```
+
+Notifikasi hanya dikirim saat **transisi status**:
+- 🔴 `up → down` (setelah mencapai `alert_threshold`)
+- 🟢 `down → up` (seketika, disertai durasi downtime)
 
 ## Project Structure
 
 ```
-uptime-php/
-├── index.php              # Main dashboard
+iclik/
+├── index.php                 # Dashboard (HTML, JS-driven)
+├── config.php                # Konfigurasi DB + Telegram (diproteksi .htaccess)
+├── .htaccess                 # Proteksi akses config.php
 ├── includes/
-│   ├── json_handler.php   # JSON file operations
-│   └── functions.php      # Helper functions
+│   ├── db.php                # Koneksi MySQL (PDO)
+│   ├── functions.php         # ping, validasi, config, logging, format
+│   ├── monitor.php           # State machine status + notifikasi Telegram
+│   └── telegram.php          # Pengirim pesan Telegram
 ├── api/
-│   ├── get_servers.php    # Get servers API
-│   ├── add_server.php     # Add server API
-│   ├── delete_server.php  # Delete server API
-│   └── check_status.php   # Manual check API
+│   ├── get_servers.php       # GET  — daftar server + status
+│   ├── add_server.php        # POST — tambah server + ping perdana
+│   ├── delete_server.php     # POST — soft delete
+│   ├── check_status.php      # POST — cek manual satu server
+│   └── get_events.php        # GET  — incident feed
 ├── cron/
-│   └── ping_check.php     # Cron script for ping
+│   └── ping_check.php        # Script cron untuk ping semua server aktif
 ├── assets/
-│   ├── css/
-│   │   └── style.css      # Styles
-│   └── js/
-│       └── app.js         # JavaScript app
+│   ├── css/style.css
+│   └── js/app.js             # jQuery + Leaflet: peta, tabel, incident feed
+├── sql/
+│   └── schema.sql            # Skema database MySQL
 ├── data/
-│   ├── servers.json       # Server data
-│   ├── ping_logs.json     # Ping logs
-│   └── logs/             # Log files
+│   └── logs/                 # Log file harian (dibuat otomatis, diproteksi .htaccess)
+├── SPEC.md
+├── LICENSE
 └── README.md
 ```
 
 ## Usage
 
 ### Adding New Server
-1. Click "Add Server" button
-2. Fill form:
-   - Server Name
-   - IP Address
-   - Description (optional)
-3. Click on map to select location
-4. Click "Save Server"
+1. Klik tombol "Add Server"
+2. Isi form: Server Name, IP Address, Description (opsional)
+3. Klik lokasi di peta untuk memilih koordinat
+4. Klik "Save Server" — server langsung di-ping perdana
 
 ### Server Monitoring
-- Dashboard auto-refreshes every 30 seconds
-- Server status colors:
-  - Green = Server Online
-  - Red = Server Offline  
-  - Gray = Status Unknown
-- Connection lines from center to servers:
-  - Solid green = Active connection
-  - Dashed red = Connection lost
+- Dashboard auto-refresh setiap 30 detik
+- Warna status: Hijau = Online, Merah = Offline, Abu-abu = Unknown
+- Garis koneksi dari pusat (Jakarta) ke server: solid = aktif, putus-putus = terputus
+- Panel **Incident Feed** menampilkan riwayat down/up terbaru
 
 ### Delete Server
-- Click "Delete" button in server table
-- Confirm deletion (soft delete)
+- Klik tombol "Delete" di tabel, konfirmasi (soft delete)
 
 ## Data Storage
 
-The application uses JSON files for data storage:
-
-- `data/servers.json` - Server configurations and statistics
-- `data/ping_logs.json` - Ping history (last 100 logs per server)
-- `data/logs/` - Application logs organized by date
+Seluruh data disimpan di MySQL:
+- `servers` — konfigurasi server
+- `ping_logs` — riwayat hasil ping
+- `server_stats` — statistik & state machine (status terkonfirmasi, uptime, dll)
+- `incidents` — catatan transisi status (untuk incident feed & audit)
 
 ## Troubleshooting
 
 ### Ping Not Working
-- Check if PHP `exec()` function is enabled
-- Ensure user has permission to run ping command
-- Test manually: `php cron/ping_check.php`
+- Pastikan fungsi PHP `exec()` aktif
+- Pastikan user punya izin menjalankan perintah `ping`
+- Uji manual: `php cron/ping_check.php`
 
 ### Cron Job Not Running
-- Check crontab: `crontab -l`
-- Check cron logs: `/var/log/cron` or `/var/log/syslog`
-- Test script manually: `php /path/to/uptime-php/cron/ping_check.php`
+- Cek crontab: `crontab -l`
+- Cek log cron: `/var/log/cron` atau `/var/log/syslog`
 
-### File Permissions
+### Telegram Tidak Terkirim
+- Pastikan `telegram.enabled = true` dan token/chat_id benar
+- Uji token: buka `https://api.telegram.org/bot<TOKEN>/getMe`
+- Notifikasi hanya dikirim saat transisi, bukan setiap ping
+
+## Testing
+
+Skrip pengujian CLI tersedia di folder `tests/` (butuh PHP + `config.php` terisi):
 ```bash
-# Fix permissions if needed
-chmod 755 data/
-chmod 644 data/*.json
-chmod 755 cron/ping_check.php
+php tests/test_monitor.php    # uji state machine, incident, durasi downtime (self-cleaning)
+php tests/test_telegram.php   # kirim 1 pesan uji Telegram
+php tests/seed_data.php       # isi data contoh untuk uji UI (--clean untuk hapus)
 ```
+Lihat `tests/README.md` untuk detail.
 
 ## Notes
 
-- Application uses soft delete (servers marked as inactive)
-- Ping timeout: 5 seconds with 3 retries
-- Automatic log rotation (keeps last 100 logs per server)
-- All data stored in JSON files (no database required)
+- Soft delete (server ditandai tidak aktif, tidak dihapus fisik)
+- Ping timeout 5 detik dengan retry 3× per percobaan
+- Alert DOWN dikirim setelah `alert_threshold` kegagalan berturut-turut
 
 ## Security
 
-- Input validation untuk IP addresses
-- Sanitized user inputs
-- Escaped shell arguments
-- File-based storage with proper permissions
+- Validasi format IP address
+- Prepared statements (PDO) untuk semua query
+- Argumen shell di-escape (`escapeshellarg`) sebelum `ping`
+- `config.php` dan folder `data/` diproteksi dari akses browser via `.htaccess`
 
 ## License
 

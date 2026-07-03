@@ -13,23 +13,28 @@ const centerLng = 106.8456;
 $(document).ready(function() {
     initMap();
     loadServers();
-    
+    loadEvents();
+
     // Auto refresh every 30 seconds
-    setInterval(loadServers, 30000);
-    
+    setInterval(function() {
+        loadServers();
+        loadEvents();
+    }, 30000);
+
     // Event handlers
     $('#btnRefresh').click(function() {
         $(this).html('Refreshing...').prop('disabled', true);
         loadServers();
+        loadEvents();
     });
-    
+
     $('#btnAddServer').click(openAddServerModal);
     $('.close').click(closeModal);
     $('#addServerForm').submit(handleAddServer);
-    
+
     // Close modal when clicking outside
     $(window).click(function(event) {
-        if (event.target.className === 'modal') {
+        if (event.target.id === 'addServerModal') {
             closeModal();
         }
     });
@@ -204,6 +209,48 @@ function updateTable(servers) {
             </tr>
         `;
         tbody.append(row);
+    });
+}
+
+// Load incident feed
+function loadEvents() {
+    $.ajax({
+        url: 'api/get_events.php?limit=50',
+        method: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                updateEventFeed(response.events);
+            }
+        }
+    });
+}
+
+function updateEventFeed(events) {
+    const list = $('#eventList');
+    list.empty();
+
+    if (!events || events.length === 0) {
+        list.append('<li class="event-empty">Belum ada insiden tercatat.</li>');
+        return;
+    }
+
+    events.forEach(ev => {
+        const isDown = ev.type === 'down';
+        const icon = isDown ? '🔴' : '🟢';
+        const label = isDown ? 'DOWN' : 'RECOVERED';
+        const cls = isDown ? 'event-down' : 'event-up';
+        const durText = (!isDown && ev.downtime) ? ` <span class="event-dur">(down ${ev.downtime})</span>` : '';
+        const name = ev.server_name || ('Server #' + ev.server_id);
+        list.append(`
+            <li class="event-item ${cls}">
+                <span class="event-icon">${icon}</span>
+                <div class="event-body">
+                    <div class="event-title"><b>${name}</b> — ${label}${durText}</div>
+                    <div class="event-meta">${ev.ip_address} · ${ev.timestamp}</div>
+                </div>
+            </li>
+        `);
     });
 }
 
