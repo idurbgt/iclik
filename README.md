@@ -23,7 +23,7 @@ Nama "Iclik" berasal dari alur utamanya: **klik lokasi di peta** untuk menempatk
 - MySQL >= 5.7 (atau MariaDB setara)
 - Web Server (Apache/Nginx) atau `php -S` untuk development
 - PHP extensions: `pdo_mysql`, `curl` (opsional, untuk Telegram — ada fallback tanpa cURL)
-- Fungsi PHP `exec()` aktif (dibutuhkan untuk menjalankan `ping`)
+- **Tidak butuh `exec()`** — pengecekan status memakai koneksi TCP (`fsockopen`), aman di server ber-hardening
 - Cron access untuk scheduled jobs
 
 ## Installation
@@ -149,9 +149,10 @@ Seluruh data disimpan di MySQL:
 
 ## Troubleshooting
 
-### Ping Not Working
-- Pastikan fungsi PHP `exec()` aktif
-- Pastikan user punya izin menjalankan perintah `ping`
+### Ping / Cek Status Tidak Bekerja
+- Pengecekan memakai TCP (`fsockopen`), bukan ICMP. Pastikan port di `ping_ports`
+  (`config.php`, default 80 & 443) sesuai layanan server yang dipantau
+- Pastikan firewall server tidak memblok koneksi keluar ke port tersebut
 - Uji manual: `php cron/ping_check.php`
 
 ### Cron Job Not Running
@@ -183,7 +184,7 @@ Lihat `tests/README.md` untuk detail.
 
 - Validasi format IP address
 - Prepared statements (PDO) untuk semua query
-- Argumen shell di-escape (`escapeshellarg`) sebelum `ping`
+- Tidak menjalankan perintah shell (`exec`) — cek status via `fsockopen`, cocok untuk server ber-hardening
 - `config.php` dan folder `data/` diproteksi dari akses browser via `.htaccess`
 
 ## License

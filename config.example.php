@@ -35,6 +35,11 @@ return [
     // Jumlah kegagalan ping berturut-turut sebelum server dinyatakan DOWN
     'alert_threshold' => 2,
 
+    // Metode cek: koneksi TCP (tanpa exec/ICMP). Daftar port yang dicoba per server.
+    // Host dianggap UP bila salah satu port bisa dikoneksi ATAU menolak koneksi.
+    'ping_ports'   => [80, 443],
+    'ping_timeout' => 3,
+
     // Zona waktu untuk timestamp
     'timezone' => 'Asia/Jakarta',
 ];
