@@ -2,41 +2,38 @@
 require_once __DIR__ . '/telegram.php';
 
 /**
- * Cek status server via koneksi TCP (fsockopen) — TIDAK memakai exec()/ICMP,
- * sehingga aman di server yang menonaktifkan exec (hardening).
- *
- * Host dianggap UP bila salah satu port berhasil dikoneksi ATAU secara aktif
- * menolak koneksi (connection refused = host hidup, hanya port tertutup).
- * Port yang dicoba & timeout dapat diatur di config.php (ping_ports, ping_timeout).
- *
- * @param string $ip
- * @return array ['status' => 'up'|'down', 'response_time' => int|null]
+ * Ping server using ICMP
  */
 function pingServer($ip) {
-    $config  = loadConfig();
-    $ports   = !empty($config['ping_ports']) ? $config['ping_ports'] : [80, 443];
-    $timeout = $config['ping_timeout'] ?? 3;
+    $timeout = 5;
 
-    foreach ($ports as $port) {
-        $errno = 0;
-        $errstr = '';
-        $start = microtime(true);
-        $conn = @fsockopen($ip, (int) $port, $errno, $errstr, $timeout);
-        $elapsed = (int) round((microtime(true) - $start) * 1000);
+    // Sanitize IP address
+    $ip = escapeshellarg($ip);
 
-        if ($conn) {
-            fclose($conn);
-            return ['status' => 'up', 'response_time' => $elapsed];
-        }
-
-        // ECONNREFUSED (Linux 111 / Windows 10061): host hidup, port tertutup → tetap UP
-        if ($errno === 111 || $errno === 10061) {
-            return ['status' => 'up', 'response_time' => $elapsed];
-        }
-        // Selain itu (timeout / unreachable) → coba port berikutnya
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        // Windows
+        $ping = exec("ping -n 1 -w " . ($timeout * 1000) . " $ip", $output, $status);
+    } else {
+        // Linux/Mac
+        $ping = exec("ping -c 1 -W $timeout $ip 2>&1", $output, $status);
     }
 
-    return ['status' => 'down', 'response_time' => null];
+    if ($status === 0) {
+        // Parse response time from output
+        $output_string = implode(' ', $output);
+        preg_match('/time[<=]([0-9.]+)\s*ms/', $output_string, $matches);
+        $responseTime = isset($matches[1]) ? round(floatval($matches[1])) : 0;
+
+        return [
+            'status' => 'up',
+            'response_time' => $responseTime
+        ];
+    }
+
+    return [
+        'status' => 'down',
+        'response_time' => null
+    ];
 }
 
 /**
@@ -129,8 +126,6 @@ function loadConfig() {
 
     $config['alert_threshold'] = $config['alert_threshold'] ?? 2;
     $config['timezone'] = $config['timezone'] ?? 'Asia/Jakarta';
-    $config['ping_ports'] = !empty($config['ping_ports']) ? $config['ping_ports'] : [80, 443];
-    $config['ping_timeout'] = $config['ping_timeout'] ?? 3;
 
     // Samakan zona waktu PHP aplikasi (idempoten karena config di-cache)
     date_default_timezone_set($config['timezone']);

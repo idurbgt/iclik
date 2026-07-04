@@ -171,36 +171,25 @@ iclik/
 1. `app.js` memanggil `api/get_servers.php` & `api/get_events.php` tiap 30 detik
 2. Perbarui marker + garis peta, tabel status, dan incident feed
 
-## 8. Implementasi Cek Status (tanpa exec)
-
-Pengecekan status memakai **koneksi TCP via `fsockopen`**, bukan ICMP/`exec`.
-Ini penting agar berjalan di server yang menonaktifkan `exec()` (hardening).
-Port yang dicoba & timeout diatur di `config.php` (`ping_ports`, `ping_timeout`).
+## 8. Implementasi Ping
 
 `includes/functions.php`:
 ```php
 function pingServer($ip) {
-    $config  = loadConfig();
-    $ports   = $config['ping_ports'] ?: [80, 443];
-    $timeout = $config['ping_timeout'] ?? 3;
-
-    foreach ($ports as $port) {
-        $errno = 0; $errstr = '';
-        $start = microtime(true);
-        $conn = @fsockopen($ip, (int) $port, $errno, $errstr, $timeout);
-        $elapsed = (int) round((microtime(true) - $start) * 1000);
-
-        if ($conn) { fclose($conn); return ['status'=>'up','response_time'=>$elapsed]; }
-        // ECONNREFUSED (111/10061) = host hidup, port tertutup → tetap UP
-        if ($errno === 111 || $errno === 10061) return ['status'=>'up','response_time'=>$elapsed];
+    $timeout = 5;
+    $ip = escapeshellarg($ip);
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $ping = exec("ping -n 1 -w " . ($timeout * 1000) . " $ip", $output, $status);
+    } else {
+        $ping = exec("ping -c 1 -W $timeout $ip 2>&1", $output, $status);
+    }
+    if ($status === 0) {
+        preg_match('/time[<=]([0-9.]+)\s*ms/', implode(' ', $output), $m);
+        return ['status' => 'up', 'response_time' => isset($m[1]) ? round(floatval($m[1])) : 0];
     }
     return ['status' => 'down', 'response_time' => null];
 }
 ```
-
-> Konsekuensi: host yang hanya merespons ICMP dan mem-*drop* semua TCP (fully
-> firewalled) akan terbaca `down`. Sesuaikan `ping_ports` dengan layanan yang benar-benar
-> terbuka pada target.
 
 ## 9. State Machine & Notifikasi
 
@@ -249,7 +238,7 @@ Semua endpoint mengembalikan JSON (`Access-Control-Allow-Origin: *`).
 Sudah diterapkan:
 - Prepared statements (PDO) untuk seluruh query
 - Validasi IP (`FILTER_VALIDATE_IP`), sanitasi input (`trim`+`stripslashes`+`htmlspecialchars`)
-- Tidak memakai `exec`/shell — cek status via `fsockopen` (tidak ada command injection)
+- `escapeshellarg()` sebelum `exec` (mitigasi command injection)
 - Transaksi + row lock pada state machine (mitigasi race condition)
 - `config.php` & `data/` diproteksi `.htaccess`
 
